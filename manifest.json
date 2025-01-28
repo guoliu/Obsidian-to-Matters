@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "obsidian-to-matters",
+	"name": "Obsidian to Matters",
+	"version": "0.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Publish article from Obsidian (https://obsidian.md) to Matters Town (https://matters.town)",
+	"author": "Guo Liu",
+	"authorUrl": "https://matters.town/@guo",
+	"fundingUrl": "https://matters.town/@guo",
 	"isDesktopOnly": false
 }

@@ -1,0 +1,11 @@
+schema: https://server.matters.town/graphql
+documents:
+    - src/operations.ts
+generates:
+    src/generated/graphql.ts:
+        plugins:
+            - typescript
+            - typescript-operations
+        config:
+            onlyOperationTypes: true
+            enumsAsTypes: true

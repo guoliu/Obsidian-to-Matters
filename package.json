@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-to-matters",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "Publish article from Obsidian (https://obsidian.md) to Matters Town (https://matters.town)",
 	"main": "main.js",
 	"scripts": {

@@ -1,11 +1,11 @@
 {
-	"id": "obsidian-to-matters",
-	"name": "Obsidian to Matters",
-	"version": "0.0.2",
+	"id": "publish-to-matters",
+	"name": "Publish to Matters",
+	"version": ".0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Publish article from Obsidian (https://obsidian.md) to Matters Town (https://matters.town)",
 	"author": "Guo Liu",
 	"authorUrl": "https://matters.town/@guo",
 	"fundingUrl": "https://matters.town/@guo",
-	"isDesktopOnly": false
+	"isDesktopOnly": true
 }

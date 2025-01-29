@@ -17,5 +17,5 @@ export interface PublisherSettings {
 
 export const DEFAULT_SETTINGS: PublisherSettings = {
 	accessToken: "",
-	environment: "development",
+	environment: "production",
 };

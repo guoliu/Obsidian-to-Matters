@@ -1,57 +1,37 @@
 import {
   ButtonComponent,
   MarkdownRenderer,
-  Modal,
   Notice,
-  requestUrl,
   setIcon,
   Setting,
 } from "obsidian";
+
 import Publisher from "../main";
-import { SERVER_ENDPOINTS } from "./settings";
+import { WEB_DOMAINS } from "./settings";
+import { QueryModal } from "./QueryModal";
+import { GET_ARTICLE, ME, PUBLISH_ARTICLE, PUT_DRAFT } from "./operations";
+
 import {
   PutDraftInput,
   ArticleLicenseType,
   PutDraftMutation,
   PublishArticleInput,
+  GetArticleQuery,
+  ArticleInput,
+  PublishArticleMutation,
+  MeQuery,
 } from "./generated/graphql";
 
 interface Draft {
   [key: string]: any;
 }
 
-export class PublishModal extends Modal {
+export class PublishModal extends QueryModal {
   button: ButtonComponent;
+  description: DocumentFragment;
 
-  constructor(private plugin: Publisher) {
-    super(plugin.app);
-  }
-
-  // send query to GQL server
-  private async sendQuery(query: string, input: Record<string, unknown> = {}) {
-    try {
-      const response = await requestUrl({
-        url: SERVER_ENDPOINTS[this.plugin.settings.environment],
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-access-token": this.plugin.settings.accessToken,
-        },
-        body: JSON.stringify({
-          query,
-          variables: { input },
-        }),
-      });
-
-      if (response.status !== 200) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      return response.json;
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  constructor(plugin: Publisher) {
+    super(plugin);
   }
 
   // metadata of article, as seen in Obsidian editor
@@ -74,7 +54,7 @@ export class PublishModal extends Modal {
   };
 
   // get Matters article info from url
-  private async getTitleFromUrl(url: string): Promise<string | null> {
+  private async getArticleFromUrl(url: string) {
     if (!url.includes("matters.town")) {
       console.error("Only accept URL of Matters article");
       return null;
@@ -83,16 +63,12 @@ export class PublishModal extends Modal {
     const shortHash = url.split("/a/")[1].split("?")[0];
 
     try {
-      const data = await this.sendQuery(`
-				query GetArticle {
-					article(input: { shortHash: "${shortHash}" }) {
-						id
-					    title
-					}
-				}
-			`);
+      const data = await this.sendQuery<GetArticleQuery, ArticleInput>(
+        GET_ARTICLE,
+        { shortHash }
+      );
 
-      return data.data.article.title;
+      return data.article;
     } catch (error) {
       console.error("Failed to fetch article title:", error);
       return null;
@@ -103,7 +79,7 @@ export class PublishModal extends Modal {
     // Add loading spinner
     const loadingEl = this.contentEl.createDiv({ cls: "loader-container" });
     loadingEl.addClass("loading");
-    setIcon(loadingEl, "loader-2");
+    setIcon(loadingEl, "loader-circle");
 
     try {
       // checks
@@ -140,6 +116,8 @@ export class PublishModal extends Modal {
       this.draft.title = title;
       this.draft.content = this.contentEl.innerHTML;
 
+      console.log(this.draft.content);
+
       // remove loading spinner
       loadingEl.remove();
 
@@ -159,7 +137,8 @@ export class PublishModal extends Modal {
       new Setting(this.contentEl)
         .setDesc(
           createFragment((el) => {
-            el.createDiv().innerHTML = `<b>Tags:</b> ${
+            el.createDiv().innerHTML = `
+            <b>Tags:</b> ${
               this.draft["tags"].length > 0
                 ? this.draft["tags"].join(", ")
                 : "No tags"
@@ -170,6 +149,8 @@ export class PublishModal extends Modal {
                   `<a id="collection-${index}" href="${url}" target="_blank">${url}</a>`
               )
               .join(", ")}`;
+
+            this.description = el;
           })
         )
         .addButton((btn) => {
@@ -179,20 +160,32 @@ export class PublishModal extends Modal {
             .setCta()
             .onClick(this.onSubmit.bind(this));
 
-          button.buttonEl.style.minWidth = `${this.button.buttonEl.offsetWidth}px`;
+          // prevent resizing
+          button.buttonEl.style.minWidth = `${button.buttonEl.offsetWidth}px`;
+
+          // register button
           this.button = button;
 
           return button;
         });
 
-      // Fetch and update titles asynchronously
+      // Fetch and update collection
+      const collection: string[] = [];
       this.draft["collection"].forEach(async (url: string, index: number) => {
-        const title = await this.getTitleFromUrl(url);
-        const linkEl = this.contentEl.querySelector(`#collection-${index}`);
-        if (linkEl) {
-          linkEl.textContent = title;
+        const article = await this.getArticleFromUrl(url);
+        if (article) {
+          // get id
+          collection.push(article.id);
+          // display title
+          const linkEl = this.contentEl.querySelector(`#collection-${index}`);
+          if (linkEl) {
+            linkEl.textContent = article.title;
+          }
+        } else {
+          new Notice(`Failed to fetch article: ${url}`);
         }
       });
+      this.draft.collection = collection;
     } catch (error) {
       new Notice("Failed to load article data: " + error.message);
       console.error(error);
@@ -203,18 +196,13 @@ export class PublishModal extends Modal {
     // show spinner
     this.button
       .setButtonText("")
-      .setIcon("loader-2")
+      .setIcon("loader-circle")
       .buttonEl.addClass("loading");
     this.button.setDisabled(true);
 
     try {
       // deconstruct draft, get license and allowComments
-      const {
-        license: licenseString,
-        allowComments,
-        collection: _, // TODO: support collection
-        ...rest
-      } = this.draft;
+      const { license: licenseString, allowComments, ...rest } = this.draft;
 
       // translate license to Matters API, using CC0 as default
       const licenseKey = licenseString.replace(/\s+/g, "").toLowerCase();
@@ -222,35 +210,22 @@ export class PublishModal extends Modal {
         licenseKey in this.licenseMap ? this.licenseMap[licenseKey] : "cc_0"
       ) as ArticleLicenseType;
 
-      const { data, errors }: { data: PutDraftMutation; errors?: any } =
-        await this.sendQuery(
-          `
-				mutation PutDraft($input: PutDraftInput!) {
-					putDraft(input: $input) {
-						id
-						title
-						content
-            summary
-						slug
-					}
-				}
-			`,
-          {
-            ...rest,
-            license,
-            canComment: allowComments,
-          } satisfies PutDraftInput
-        );
+      const data = await this.sendQuery<PutDraftMutation, PutDraftInput>(
+        PUT_DRAFT,
+        {
+          ...rest,
+          license,
+          canComment: allowComments,
+        }
+      );
 
-      // catch GraphQL errors
-      if (errors) {
-        throw new Error(errors[0].message);
-      }
-
-      new Notice(` draft Uploaded.`);
+      new Notice(` Draft uploaded.`);
 
       // get server version of draft
       this.draft = { ...this.draft, ...data.putDraft };
+      // display draft url
+      const draftURL = `${WEB_DOMAINS[this.plugin.settings.environment]}/me/drafts/${this.draft.id}`;
+      console.log({ draftURL });
 
       // remove loader
       this.button.buttonEl.removeClass("loading");
@@ -262,7 +237,7 @@ export class PublishModal extends Modal {
     }
   }
 
-  private async publishDraft() {
+  private async publishArticle() {
     try {
       // show spinner
       this.button
@@ -272,50 +247,34 @@ export class PublishModal extends Modal {
       this.button.setDisabled(true);
 
       // trigger publish
-      const { data, errors } = await this.sendQuery(
-        `
-				mutation PublishDraft($input: PublishArticleInput!) {
-					publishArticle(input: $input) {
-						id
-            article {
-              id
-              shortHash
-            }
-					}
-				}
-			`,
-        { id: this.draft.id } satisfies PublishArticleInput
-      );
+      const data = await this.sendQuery<
+        PublishArticleMutation,
+        PublishArticleInput
+      >(PUBLISH_ARTICLE, {
+        id: this.draft.id,
+      });
 
-      // catch GraphQL errors
-      if (errors) {
-        throw new Error(errors[0].message);
-      }
+      console.log(data);
     } catch (error) {
       console.error("Failed to publish draft:", error);
       new Notice("Failed to publish draft:" + error.message);
     }
+
+    // const url = data.
   }
 
   private async onSubmit() {
     if (!this.draft.id) {
       await this.uploadDraft();
     } else {
-      await this.publishDraft();
+      await this.publishArticle();
     }
   }
 
   private async verifyToken(): Promise<boolean> {
     try {
-      const data = await this.sendQuery(`
-						query Me {
-							viewer {
-								id
-								userName
-							}
-						}
-					`);
-      return !data.errors && data.data?.viewer?.id;
+      const data = await this.sendQuery<MeQuery>(ME);
+      return !!data?.viewer?.id;
     } catch (error) {
       console.error("Token verification failed:", error);
       new Notice("Token verification failed. Please check your access token.");

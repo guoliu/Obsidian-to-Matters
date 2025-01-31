@@ -10,3 +10,14 @@
 		transform: rotate(360deg);
 	}
 }
+
+.loading {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+
+.loader-container {
+	height: 150px;
+}

@@ -1,89 +1,109 @@
-import { Plugin, Setting, App, PluginSettingTab } from "obsidian";
-import { PublisherSettings, DEFAULT_SETTINGS } from "./src/settings";
+import { Plugin, Setting, App, PluginSettingTab, Notice } from "obsidian";
+import { type PublisherSettings, DEFAULT_SETTINGS } from "./src/settings";
 import { PublishModal } from "./src/PublishModal";
 
 export default class Publisher extends Plugin {
-	private iconEl!: HTMLElement;
-	settings: PublisherSettings;
+  private iconEl!: HTMLElement;
+  settings: PublisherSettings;
 
-	private updateIconVisibility() {
-		const activeFile = this.app.workspace.getActiveFile();
-		activeFile
-			? (this.iconEl.style.display = "block")
-			: (this.iconEl.style.display = "none");
-	}
+  private updateIconVisibility() {
+    const activeFile = this.app.workspace.getActiveFile();
+    activeFile
+      ? (this.iconEl.style.display = "block")
+      : (this.iconEl.style.display = "none");
+  }
 
-	async onload() {
-		await this.loadSettings();
+  async onload() {
+    await this.loadSettings();
 
-		this.iconEl = this.addRibbonIcon("dice", "Post", (evt: MouseEvent) => {
-			const modal = new PublishModal(this);
-			modal.open();
-		});
+    this.iconEl = this.addRibbonIcon(
+      "dice",
+      "Post",
+      async (evt: MouseEvent) => {
+        // check frontmatter
+        const activeFile = this.app.workspace.getActiveFile();
 
-		// Only show the icon when there is a active file to be published
-		this.updateIconVisibility();
+        if (!activeFile) {
+          new Notice("No active file.");
+          return;
+        }
 
-		// Listen to active leaf changes and update icon visibility
-		this.registerEvent(
-			this.app.workspace.on("active-leaf-change", () => {
-				this.updateIconVisibility();
-			})
-		);
+        const modal = new PublishModal(this);
 
-		this.addCommand({
-			id: "publish-to-matters",
-			name: "Publish to Matters Town",
-			callback: () => {
-				new PublishModal(this).open();
-			},
-		});
+        let modified = false;
+        await this.app.fileManager.processFrontMatter(
+          activeFile,
+          (frontmatter) => {
+            for (const property in modal.draft.settings) {
+              if (!(property in frontmatter)) {
+                frontmatter[property] =
+                  modal.draft.settings[
+                    property as keyof typeof modal.draft.settings
+                  ];
+                modified = true;
+              }
+            }
+          }
+        );
+        if (modified) {
+          new Notice("Article settings added. Click again to upload.");
+        } else {
+          modal.open();
+        }
+      }
+    );
 
-		this.addSettingTab(new PublisherSettingTab(this.app, this));
-	}
+    // Only show the icon when there is a active file to be published
+    this.updateIconVisibility();
 
-	onunload() {
-		this.iconEl.remove();
-	}
+    // Listen to active leaf changes and update icon visibility
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        this.updateIconVisibility();
+      })
+    );
 
-	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
-			await this.loadData()
-		);
-	}
+    this.addSettingTab(new PublisherSettingTab(this.app, this));
+  }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+  onunload() {
+    this.iconEl.remove();
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
 }
 
 class PublisherSettingTab extends PluginSettingTab {
-	plugin: Publisher;
+  plugin: Publisher;
 
-	constructor(app: App, plugin: Publisher) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+  constructor(app: App, plugin: Publisher) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
+  display(): void {
+    const { containerEl } = this;
+    containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Matters Town Settings" });
+    containerEl.createEl("h2", { text: "Matters Town Settings" });
 
-		new Setting(containerEl)
-			.setName("Access Token")
-			.setDesc("Enter your Matters Town access token")
-			.addText((text) =>
-				text
-					.setPlaceholder("Enter your token")
-					.setValue(this.plugin.settings.accessToken)
-					.onChange(async (value) => {
-						this.plugin.settings.accessToken = value;
-						await this.plugin.saveSettings();
-					})
-			);
-	}
+    new Setting(containerEl)
+      .setName("Access Token")
+      .setDesc("Enter your Matters Town access token")
+      .addText((text) =>
+        text
+          .setPlaceholder("Enter your token")
+          .setValue(this.plugin.settings.accessToken)
+          .onChange(async (value) => {
+            this.plugin.settings.accessToken = value;
+            await this.plugin.saveSettings();
+          })
+      );
+  }
 }

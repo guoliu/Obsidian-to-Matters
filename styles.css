@@ -1,23 +1,18 @@
 .loading > svg {
-	animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-	from {
-		transform: rotate(0deg);
-	}
-	to {
-		transform: rotate(360deg);
-	}
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loading {
-	display: flex;
-	justify-content: center;
-	align-items: center;
-}
-
-
-.loader-container {
-	height: 150px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }

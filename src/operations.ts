@@ -1,4 +1,4 @@
-import { gql } from "graphql-tag";
+import { gql } from 'graphql-tag';
 
 export const GET_ARTICLE = gql`
   query GetArticle($input: ArticleInput!) {
@@ -16,7 +16,14 @@ export const PUT_DRAFT = gql`
       title
       content
       summary
-      slug
+      collection(input: { first: 10 }) {
+        edges {
+          node {
+            id
+            title
+          }
+        }
+      }
     }
   }
 `;

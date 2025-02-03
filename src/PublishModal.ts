@@ -250,6 +250,14 @@ export class PublishModal extends QueryModal {
       this.button.buttonEl.removeClass('loading');
       this.button.setDisabled(false);
       this.button.setButtonText('Publish draft');
+      
+      // scroll button into view with a slight delay
+      setTimeout(() => {
+        this.button.buttonEl.scrollIntoView({ 
+          behavior: 'smooth',
+          block: 'center'
+        });
+      }, 100);
     }
   }
 

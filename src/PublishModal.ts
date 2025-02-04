@@ -2,7 +2,7 @@ import { ButtonComponent, MarkdownRenderer, Notice, setIcon, Setting } from 'obs
 
 import Publisher from '../main';
 import { QueryModal } from './QueryModal';
-import { GET_ARTICLE, PUBLISH_ARTICLE, PUT_DRAFT } from './operations';
+import { GET_ARTICLE, PUBLISH_ARTICLE, PUT_DRAFT, GET_PUBLISHED_ARTICLE } from './operations';
 
 import type {
   PutDraftInput,
@@ -12,11 +12,14 @@ import type {
   GetArticleQuery,
   ArticleInput,
   PublishArticleMutation,
+  NodeInput,
+  GetPublishedArticleQuery,
 } from './generated/graphql';
 
 import Description from './components/Description.svelte';
 import { mount } from 'svelte';
 import { draftStore } from './stores';
+import { WEB_DOMAINS } from './settings';
 
 export interface Draft {
   id?: string;
@@ -132,7 +135,7 @@ export class PublishModal extends QueryModal {
         const property =
           cache?.frontmatter?.[key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()];
         if (property) {
-          // special case for collection
+          // handle collection
           if (key === 'collection') {
             this.draft.settings['collection'] = property.map((url: string) => ({ url }));
           } else {
@@ -250,12 +253,12 @@ export class PublishModal extends QueryModal {
       this.button.buttonEl.removeClass('loading');
       this.button.setDisabled(false);
       this.button.setButtonText('Publish draft');
-      
+
       // scroll button into view with a slight delay
       setTimeout(() => {
-        this.button.buttonEl.scrollIntoView({ 
+        this.button.buttonEl.scrollIntoView({
           behavior: 'smooth',
-          block: 'center'
+          block: 'center',
         });
       }, 100);
     }
@@ -271,12 +274,41 @@ export class PublishModal extends QueryModal {
       const data = await this.sendQuery<PublishArticleMutation, PublishArticleInput>(
         PUBLISH_ARTICLE,
         {
-          id: this.draft.id as string,
+          id: this.draft.id,
         }
       );
+
+      // poll for published article status every 2 seconds
+      let attempts = 0;
+      const maxAttempts = 10;
+      let publishedDraft;
+      while (attempts < maxAttempts && !publishedDraft?.node?.article?.id) {
+        attempts++; 
+        publishedDraft = await this.sendQuery<GetPublishedArticleQuery, NodeInput>(
+          GET_PUBLISHED_ARTICLE,
+          {
+            id: this.draft.id,
+          },
+          true
+        );
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+     
+      const shortHash = publishedDraft?.node?.article?.shortHash;
+      if (shortHash) {
+        const url = `${WEB_DOMAINS[this.plugin.settings.environment]}/a/${shortHash}`;
+        window.open(url);
+      } else {
+        new Notice('Failed to publish draft');
+      }
+
     } catch (error) {
       console.error('Failed to publish draft:', error);
       new Notice('Failed to publish draft:' + error.message);
+    } finally {
+      this.button.buttonEl.removeClass('loading');
+      this.button.setDisabled(false);
+      this.button.setButtonText('Publish draft');
     }
   }
 

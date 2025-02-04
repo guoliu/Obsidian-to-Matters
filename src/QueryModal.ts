@@ -11,7 +11,7 @@ import { ME } from './operations';
  * Modal class that handdles Matters GQL query and authentication
  */
 export class QueryModal extends Modal {
-  sendQuery: <D, I = void>(query: ASTNode, input?: I) => Promise<D>;
+  sendQuery: <D, I = void>(query: ASTNode, input?: I, noCache?: boolean) => Promise<D>;
   plugin: Publisher;
 
   constructor(plugin: Publisher) {
@@ -21,10 +21,24 @@ export class QueryModal extends Modal {
 
     // send query to GQL server
     const { environment, accessToken } = plugin.settings;
-    this.sendQuery = async (query, input) => {
+    this.sendQuery = async (query, input, noCache = false) => {
       try {
         // get query string from AST
         const querString = print(query);
+
+        let headers = {
+          'content-type': 'application/json',
+          'x-access-token': accessToken,
+        } as Record<string, string>;
+
+        if (noCache) {
+          headers = {
+            ...headers,
+            'cache-control': 'no-cache, no-store, must-revalidate',
+            'pragma': 'no-cache',
+            'expires': '0',
+          };
+        }
 
         // send query to GQL server
         const response = await requestUrl({

@@ -40,6 +40,22 @@ export const PUBLISH_ARTICLE = gql`
   }
 `;
 
+export const GET_PUBLISHED_ARTICLE = gql`
+  query GetPublishedArticle($input: NodeInput!) {
+    node(input: $input) {
+      id
+      ... on Draft {
+        publishState
+        article {
+          id
+          title
+          shortHash
+        }
+      }
+    }
+  }
+`;
+
 export const ME = gql`
   query Me {
     viewer {

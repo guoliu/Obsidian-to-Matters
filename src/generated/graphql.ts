@@ -1357,6 +1357,33 @@ export type PublishArticleMutation = {
   };
 };
 
+export type GetPublishedArticleQueryVariables = Exact<{
+  input: NodeInput;
+}>;
+
+export type GetPublishedArticleQuery = {
+  __typename?: 'Query';
+  node?:
+    | { __typename?: 'Article'; id: string }
+    | { __typename?: 'ArticleVersion'; id: string }
+    | { __typename?: 'Circle'; id: string }
+    | { __typename?: 'Collection'; id: string }
+    | { __typename?: 'Comment'; id: string }
+    | {
+        __typename?: 'Draft';
+        publishState: PublishState;
+        id: string;
+        article?: { __typename?: 'Article'; id: string; title: string; shortHash: string } | null;
+      }
+    | { __typename?: 'IcymiTopic'; id: string }
+    | { __typename?: 'Moment'; id: string }
+    | { __typename?: 'Report'; id: string }
+    | { __typename?: 'Tag'; id: string }
+    | { __typename?: 'User'; id: string }
+    | { __typename?: 'WritingChallenge'; id: string }
+    | null;
+};
+
 export type MeQueryVariables = Exact<{ [key: string]: never }>;
 
 export type MeQuery = {

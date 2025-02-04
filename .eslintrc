@@ -3,8 +3,8 @@
     "parser": "@typescript-eslint/parser",
     "env": { "node": true },
     "plugins": [
-      "@typescript-eslint"
-    ],
+      "@typescript-eslint",
+      "eslint-plugin-svelte3"],
     "extends": [
       "eslint:recommended",
       "plugin:@typescript-eslint/eslint-recommended",

@@ -20,6 +20,7 @@ import Description from './components/Description.svelte';
 import { mount } from 'svelte';
 import { draftStore } from './stores';
 import { WEB_DOMAINS } from './settings';
+import { translations } from './translations';
 
 export interface Draft {
   id?: string;
@@ -93,13 +94,13 @@ export class PublishModal extends QueryModal {
       // checks
       const currentFile = this.app.workspace.getActiveFile();
       if (!currentFile) {
-        new Notice('No file is currently open');
+        new Notice(translations().notices.noActiveFile);
         return;
       }
 
       const isValid = await this.verifyToken();
       if (!isValid) {
-        new Notice('Invalid or expired access token. Please update in settings.');
+        new Notice(translations().notices.invalidToken);
         return;
       }
 
@@ -130,17 +131,17 @@ export class PublishModal extends QueryModal {
       // remove loading spinner
       loadingEl.remove();
 
-      // extract properties from metadata
+      // extract properties from frontmatter
       for (const key in this.draft.settings) {
-        const property =
-          cache?.frontmatter?.[key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()];
+        const property = cache?.frontmatter?.[translations().frontmatter[key]];
+
         if (property) {
           // handle collection
           if (key === 'collection') {
             this.draft.settings['collection'] = property.map((url: string) => ({ url }));
           } else {
             // Type assertion to handle indexing with string key
-            (this.draft.settings as any)[key] = property;
+            this.draft.settings[key] = property;
           }
         }
       }
@@ -283,7 +284,7 @@ export class PublishModal extends QueryModal {
       const maxAttempts = 10;
       let publishedDraft;
       while (attempts < maxAttempts && !publishedDraft?.node?.article?.id) {
-        attempts++; 
+        attempts++;
         publishedDraft = await this.sendQuery<GetPublishedArticleQuery, NodeInput>(
           GET_PUBLISHED_ARTICLE,
           {
@@ -293,7 +294,7 @@ export class PublishModal extends QueryModal {
         );
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-     
+
       const shortHash = publishedDraft?.node?.article?.shortHash;
       if (shortHash) {
         const url = `${WEB_DOMAINS[this.plugin.settings.environment]}/a/${shortHash}`;
@@ -301,7 +302,6 @@ export class PublishModal extends QueryModal {
       } else {
         new Notice('Failed to publish draft');
       }
-
     } catch (error) {
       console.error('Failed to publish draft:', error);
       new Notice('Failed to publish draft:' + error.message);

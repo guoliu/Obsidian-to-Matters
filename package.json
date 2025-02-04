@@ -8,7 +8,7 @@
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"codegen": "graphql-codegen --config codegen.yml",
-		"format": "prettier --write \"src/**/*.{js,ts,jsx,tsx,svelte}\""
+		"format": "prettier --write \"*.ts\" \"src/**/*.{js,ts,jsx,tsx,svelte}\""
 	},
 	"keywords": [],
 	"author": "",

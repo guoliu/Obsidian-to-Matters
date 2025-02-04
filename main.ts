@@ -1,52 +1,45 @@
-import { Plugin, Setting, App, PluginSettingTab, Notice } from "obsidian";
-import { type PublisherSettings, DEFAULT_SETTINGS } from "./src/settings";
-import { PublishModal } from "./src/PublishModal";
+import { Plugin, Setting, App, PluginSettingTab, Notice } from 'obsidian';
+import { type PublisherSettings, DEFAULT_SETTINGS } from './src/settings';
+import { PublishModal } from './src/PublishModal';
+import { translations } from './src/translations';
 
 export default class Publisher extends Plugin {
-  private iconEl!: HTMLElement;
+  iconEl!: HTMLElement;
   settings: PublisherSettings;
 
   private updateIconVisibility() {
     const activeFile = this.app.workspace.getActiveFile();
-    activeFile
-      ? (this.iconEl.style.display = "block")
-      : (this.iconEl.style.display = "none");
+    activeFile ? (this.iconEl.style.display = 'block') : (this.iconEl.style.display = 'none');
   }
 
   async onload() {
     await this.loadSettings();
 
     this.iconEl = this.addRibbonIcon(
-      "dice",
-      "Post",
+      'send',
+      translations().publishToMatters,
       async (evt: MouseEvent) => {
         // check frontmatter
         const activeFile = this.app.workspace.getActiveFile();
 
         if (!activeFile) {
-          new Notice("No active file.");
+          new Notice(translations().notices.noActiveFile);
           return;
         }
 
         const modal = new PublishModal(this);
 
         let modified = false;
-        await this.app.fileManager.processFrontMatter(
-          activeFile,
-          (frontmatter) => {
-            for (const property in modal.draft.settings) {
-              if (!(property in frontmatter)) {
-                frontmatter[property] =
-                  modal.draft.settings[
-                    property as keyof typeof modal.draft.settings
-                  ];
-                modified = true;
-              }
+        await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
+          for (const property in translations().frontmatter) {
+            if (!(translations().frontmatter[property] in frontmatter)) {
+              frontmatter[translations().frontmatter[property]] = modal.draft.settings[property];
+              modified = true;
             }
           }
-        );
+        });
         if (modified) {
-          new Notice("Article settings added. Click again to upload.");
+          new Notice(translations().notices.addedFrontmatter);
         } else {
           modal.open();
         }
@@ -58,7 +51,7 @@ export default class Publisher extends Plugin {
 
     // Listen to active leaf changes and update icon visibility
     this.registerEvent(
-      this.app.workspace.on("active-leaf-change", () => {
+      this.app.workspace.on('active-leaf-change', () => {
         this.updateIconVisibility();
       })
     );
@@ -81,6 +74,7 @@ export default class Publisher extends Plugin {
 
 class PublisherSettingTab extends PluginSettingTab {
   plugin: Publisher;
+  lang: string;
 
   constructor(app: App, plugin: Publisher) {
     super(app, plugin);
@@ -91,19 +85,16 @@ class PublisherSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Matters Town Settings" });
+    containerEl.createEl('h2', { text: translations().settings.mattersSettings });
 
     new Setting(containerEl)
-      .setName("Access Token")
-      .setDesc("Enter your Matters Town access token")
+      .setName(translations().settings.accessToken)
+      .setDesc(translations().settings.enterToken)
       .addText((text) =>
-        text
-          .setPlaceholder("Enter your token")
-          .setValue(this.plugin.settings.accessToken)
-          .onChange(async (value) => {
-            this.plugin.settings.accessToken = value;
-            await this.plugin.saveSettings();
-          })
+        text.setValue(this.plugin.settings.accessToken).onChange(async (value) => {
+          this.plugin.settings.accessToken = value;
+          await this.plugin.saveSettings();
+        })
       );
   }
 }

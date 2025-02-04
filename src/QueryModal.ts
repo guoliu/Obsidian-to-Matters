@@ -35,8 +35,8 @@ export class QueryModal extends Modal {
           headers = {
             ...headers,
             'cache-control': 'no-cache, no-store, must-revalidate',
-            'pragma': 'no-cache',
-            'expires': '0',
+            pragma: 'no-cache',
+            expires: '0',
           };
         }
 

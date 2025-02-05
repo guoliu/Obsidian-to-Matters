@@ -21,6 +21,7 @@ import { mount } from 'svelte';
 import { draftStore } from './stores';
 import { WEB_DOMAINS } from './settings';
 import { translations } from './translations';
+// import ModalContent from './components/ModalContent.svelte';
 
 export interface Draft {
   id?: string;
@@ -35,8 +36,10 @@ export interface Draft {
   };
 }
 
+type ButtonUpdate = (state: 'upload' | 'publish' | 'loading') => void;
+
 export class PublishModal extends QueryModal {
-  button: ButtonComponent;
+  updateButton: ButtonUpdate;
   // default metadata of article
   // align with Obsidian editor (instead of Matters schema)
   draft: Draft = {
@@ -64,7 +67,7 @@ export class PublishModal extends QueryModal {
   };
 
   // get Matters article info from url
-  private async getArticleFromUrl(url: string) {
+  async getArticleFromUrl(url: string) {
     if (!url.includes('matters.town')) {
       console.error('Only accept URL of Matters article');
       return null;
@@ -90,116 +93,120 @@ export class PublishModal extends QueryModal {
     loadingEl.addClass('loading');
     setIcon(loadingEl, 'loader-circle');
 
-    try {
-      // checks
-      const currentFile = this.app.workspace.getActiveFile();
-      if (!currentFile) {
-        new Notice(translations().notices.noActiveFile);
-        return;
-      }
+    // checks
+    const currentFile = this.app.workspace.getActiveFile();
+    if (!currentFile) {
+      new Notice(translations().notices.noActiveFile);
+      return;
+    }
 
-      const isValid = await this.verifyToken();
-      if (!isValid) {
-        new Notice(translations().notices.invalidToken);
-        return;
-      }
+    const isValid = await this.verifyToken();
+    if (!isValid) {
+      new Notice(translations().notices.invalidToken);
+      return;
+    }
 
-      // get and set title
-      const title = currentFile.basename;
-      this.setTitle(title);
-      this.draft.title = title;
+    // get and set title
+    const title = currentFile.basename;
+    this.setTitle(title);
+    this.draft.title = title;
 
-      // get md content without frontmatter
-      const md = await this.app.vault.read(currentFile);
-      const cache = this.app.metadataCache.getFileCache(currentFile);
-      const contentWithoutFrontmatter =
-        cache?.sections?.[0]?.type === 'yaml'
-          ? md.slice(cache.sections[0].position.end.offset + 1)
-          : md;
+    // get md content without frontmatter
+    const md = await this.app.vault.read(currentFile);
+    const cache = this.app.metadataCache.getFileCache(currentFile);
+    const contentWithoutFrontmatter =
+      cache?.sections?.[0]?.type === 'yaml'
+        ? md.slice(cache.sections[0].position.end.offset + 1)
+        : md;
 
-      // render html into contentEl
-      await MarkdownRenderer.render(
-        this.app,
-        contentWithoutFrontmatter,
-        this.contentEl,
-        currentFile.path,
-        this.plugin
-      );
+    // render html into contentEl
+    await MarkdownRenderer.render(
+      this.app,
+      contentWithoutFrontmatter,
+      this.contentEl,
+      currentFile.path,
+      this.plugin
+    );
 
-      // read in content for draft
-      this.draft.content = this.contentEl.innerHTML;
-      // remove loading spinner
-      loadingEl.remove();
+    // read in content for draft
+    this.draft.content = this.contentEl.innerHTML;
+    // remove loading spinner
+    loadingEl.remove();
 
-      // extract properties from frontmatter
-      for (const key in this.draft.settings) {
-        const property = cache?.frontmatter?.[translations().frontmatter[key]];
+    // extract properties from frontmatter
+    for (const key in this.draft.settings) {
+      const property = cache?.frontmatter?.[translations().frontmatter[key]];
 
-        if (property) {
-          // handle collection
-          if (key === 'collection') {
-            this.draft.settings['collection'] = property.map((url: string) => ({ url }));
-          } else {
-            // Type assertion to handle indexing with string key
-            this.draft.settings[key] = property;
-          }
+      if (property) {
+        // handle collection
+        if (key === 'collection') {
+          this.draft.settings['collection'] = property.map((url: string) => ({ url }));
+        } else {
+          // other properties
+          this.draft.settings[key] = property;
         }
       }
-
-      // Create description section
-      const descriptionEl = this.contentEl.createDiv();
-      // Mount Svelte component
-      mount(Description, {
-        target: descriptionEl,
-        props: {
-          draft: this.draft,
-          environment: this.plugin.settings.environment,
-        },
-      });
-
-      // Create setting section, append description and button
-      const settingEl = new Setting(this.contentEl);
-      settingEl.settingEl.style.alignItems = 'flex-end';
-      settingEl
-        .setDesc(
-          createFragment((el) => {
-            el.appendChild(descriptionEl);
-          })
-        )
-        .addButton((btn) => {
-          btn.setIcon('upload').setCta().onClick(this.onSubmit.bind(this));
-          btn.buttonEl.append(createSpan({ text: 'Upload', attr: { style: `margin-left: 8px` } }));
-          btn.buttonEl.style.minWidth = `${btn.buttonEl.offsetWidth}px`;
-          btn.buttonEl.style.marginBottom = '8px';
-          this.button = btn;
-          return btn;
-        });
-
-      // Fetch and update collection
-      Promise.all(
-        this.draft.settings['collection'].map(async ({ url }, index) => {
-          const article = await this.getArticleFromUrl(url);
-          if (article) {
-            const { id, title } = article;
-            // get id & title
-            this.draft.settings['collection'][index] = { url, id, title };
-          } else {
-            new Notice(`Failed to fetch article in collection: ${url}`);
-          }
-        })
-      ).then(() => {
-        draftStore.set(this.draft);
-      });
-    } catch (error) {
-      new Notice('Failed to load article data: ' + error.message);
-      console.error(error);
     }
+
+    // Create description section
+    const descriptionEl = this.contentEl.createDiv();
+
+    // Create setting section, append description and button
+    const settingEl = new Setting(this.contentEl);
+    settingEl.settingEl.style.alignItems = 'flex-end';
+    settingEl
+      .setDesc(
+        createFragment((el) => {
+          el.appendChild(descriptionEl);
+        })
+      )
+      .addButton((btn) => {
+        // set button width and margin
+        // btn.buttonEl.style.minWidth = `${btn.buttonEl.offsetWidth}px`;
+        // btn.buttonEl.style.marginBottom = '8px';
+
+        this.updateButton = updateFactory(
+          btn,
+          this.uploadDraft.bind(this),
+          this.publishArticle.bind(this),
+          this.modalEl
+        );
+
+        // buttom ready for upload
+        this.updateButton('upload');
+
+        return btn;
+      });
+
+    // Mount Svelte component
+    mount(Description, {
+      target: descriptionEl,
+      props: {
+        draft: this.draft,
+        environment: this.plugin.settings.environment,
+      },
+    });
+
+    // Fetch and update collection
+    Promise.all(
+      this.draft.settings['collection'].map(async ({ url }, index) => {
+        const article = await this.getArticleFromUrl(url);
+        if (article) {
+          const { id, title } = article;
+          // get id & title
+          this.draft.settings['collection'][index] = { url, id, title };
+        } else {
+          new Notice(translations().notices.failCollection + url);
+        }
+      })
+    ).then(() => {
+      draftStore.set(this.draft);
+    });
   }
 
   private async uploadDraft() {
     // show spinner
-    this.button.setButtonText('').setIcon('loader-circle').buttonEl.addClass('loading');
-    this.button.setDisabled(true);
+    this.updateButton('loading');
 
     try {
       // deconstruct draft, get license, allowComments, and collection
@@ -225,7 +232,7 @@ export class PublishModal extends QueryModal {
         canComment: allowComments,
       });
 
-      new Notice(`Draft uploaded.`);
+      new Notice(translations().notices.uploadedDraft);
 
       // get server version of draft
       const { id, content, title, collection, ...restDraft } = data.putDraft;
@@ -244,40 +251,29 @@ export class PublishModal extends QueryModal {
         id,
         title,
       }));
+
       //update draft store
       draftStore.set(this.draft);
+
+      // ready for publish
+      this.updateButton('publish');
     } catch (error) {
       console.error('Failed to upload draft:', error);
-      new Notice('Failed to upload draft:' + error.message);
-    } finally {
-      // remove loader
-      this.button.buttonEl.removeClass('loading');
-      this.button.setDisabled(false);
-      this.button.setButtonText('Publish draft');
+      new Notice(translations().notices.failUploadDraft);
 
-      // scroll button into view with a slight delay
-      setTimeout(() => {
-        this.button.buttonEl.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      }, 100);
+      // ready for upload
+      this.updateButton('upload');
     }
   }
 
   private async publishArticle() {
     try {
-      // show spinner
-      this.button.setButtonText('').setIcon('loader-2').buttonEl.addClass('loading');
-      this.button.setDisabled(true);
-
+      // loading
+      this.updateButton('loading');
       // trigger publish
-      const data = await this.sendQuery<PublishArticleMutation, PublishArticleInput>(
-        PUBLISH_ARTICLE,
-        {
-          id: this.draft.id,
-        }
-      );
+      await this.sendQuery<PublishArticleMutation, PublishArticleInput>(PUBLISH_ARTICLE, {
+        id: this.draft.id,
+      });
 
       // poll for published article status every 2 seconds
       let attempts = 0;
@@ -299,24 +295,60 @@ export class PublishModal extends QueryModal {
       if (shortHash) {
         const url = `${WEB_DOMAINS[this.plugin.settings.environment]}/a/${shortHash}`;
         window.open(url);
+        this.close();
       } else {
-        new Notice('Failed to publish draft');
+        new Notice(translations().notices.failPublishDraft);
+        this.updateButton('publish');
       }
     } catch (error) {
       console.error('Failed to publish draft:', error);
-      new Notice('Failed to publish draft:' + error.message);
-    } finally {
-      this.button.buttonEl.removeClass('loading');
-      this.button.setDisabled(false);
-      this.button.setButtonText('Publish draft');
-    }
-  }
-
-  private async onSubmit() {
-    if (!this.draft.id) {
-      await this.uploadDraft();
-    } else {
-      await this.publishArticle();
+      new Notice(translations().notices.failPublishDraft);
     }
   }
 }
+
+const updateFactory = (
+  button: ButtonComponent,
+  upload: () => void,
+  publish: () => void,
+  modalContentEl: HTMLElement
+) =>
+  ((state) => {
+    if (state === 'upload') {
+      // button ready for upload
+      button
+        .setIcon('upload')
+        .setCta()
+        .onClick(upload)
+        .setDisabled(false)
+        .buttonEl.removeClass('loading');
+
+      button.buttonEl.append(
+        createSpan({ text: translations().upload, attr: { style: `margin-left: 8px` } })
+      );
+      button.buttonEl.style.minWidth = `72px`;
+    } else if (state === 'publish') {
+      // ready for publish
+      button
+        .setIcon('send')
+        .setCta()
+        .onClick(publish)
+        .setDisabled(false)
+        .buttonEl.removeClass('loading');
+
+      button.buttonEl.append(
+        createSpan({ text: translations().publish, attr: { style: `margin-left: 8px` } })
+      );
+      button.buttonEl.style.minWidth = `72px`;
+    } else if (state === 'loading') {
+      // loading
+      button.setDisabled(true).setButtonText('').setIcon('loader-2').buttonEl.addClass('loading');
+      button.buttonEl.style.minWidth = `72px`;
+    }
+
+    // Keep modal scrolled to the bottom after updating button content.
+    // Use requestAnimationFrame to ensure the DOM has updated.
+    requestAnimationFrame(() => {
+      modalContentEl.scrollTop = modalContentEl.scrollHeight;
+    });
+  }) as ButtonUpdate;

@@ -5,7 +5,13 @@ export const translations = () => {
 
   return {
     en: {
+      allowed: 'allowed',
+      notAllowed: 'not allowed',
       publishToMatters: 'Publish to Matters',
+      upload: 'Upload',
+      publish: 'Publish',
+      viewOnMatters: 'View on Matters',
+      draft: 'Draft',
 
       settings: {
         mattersSettings: 'Matters Settings',
@@ -17,6 +23,10 @@ export const translations = () => {
         noActiveFile: 'No active file.',
         addedFrontmatter: 'Article settings added. Click again to upload.',
         invalidToken: 'Invalid or expired access token. Please update in settings.',
+        failCollection: 'Failed to fetch article in collection:\n',
+        uploadedDraft: 'Draft uploaded.',
+        failUploadDraft: 'Failed to upload draft.',
+        failPublishDraft: 'Failed to publish draft.',
       },
 
       frontmatter: {
@@ -24,12 +34,18 @@ export const translations = () => {
         tags: 'Tags',
         collection: 'Collection',
         license: 'License',
-        allowComments: 'Allow Comments',
+        allowComments: 'Comments',
       },
     },
 
     zh: {
+      allowed: '允许',
+      notAllowed: '不允许',
       publishToMatters: '发布到 Matters',
+      publish: '发布',
+      upload: '上传',
+      viewOnMatters: '在 Matters 上查看',
+      draft: '草稿',
 
       settings: {
         mattersSettings: 'Matters 设置',
@@ -41,6 +57,10 @@ export const translations = () => {
         noActiveFile: '没有选中文件',
         addedFrontmatter: '已添加文章设置\n再次点击上传草稿',
         invalidToken: '无效或过期的密钥\n请在设置中更新',
+        failCollection: '无法识别关联文章:\n',
+        uploadedDraft: '草稿已上传',
+        failUploadDraft: '上传草稿失败',
+        failPublishDraft: '发布草稿失败',
       },
 
       frontmatter: {
@@ -48,13 +68,18 @@ export const translations = () => {
         tags: '标签',
         collection: '关联',
         license: '版权',
-        allowComments: '允许评论',
+        allowComments: '评论',
       },
     },
 
     zh_TW: {
+      allowed: '允許',
+      notAllowed: '不允許',
       publishToMatters: '發布到 Matters',
-
+      publish: '發布',
+      upload: '上傳',
+      viewOnMatters: '在 Matters 上查看',
+      draft: '草稿',
       settings: {
         mattersSettings: 'Matters 設置',
         accessToken: '密鑰',
@@ -65,6 +90,10 @@ export const translations = () => {
         noActiveFile: '沒有選中文件',
         addedFrontmatter: '已添加文章設置\n再次點擊上傳草稿',
         invalidToken: '無效或過期的密鑰\n請在設置中更新',
+        failCollection: '無法識別關聯文章:\n',
+        uploadedDraft: '草稿已上傳',
+        failUploadDraft: '上傳草稿失敗',
+        failPublishDraft: '發布草稿失敗',
       },
 
       frontmatter: {
@@ -72,7 +101,7 @@ export const translations = () => {
         tags: '標籤',
         collection: '關聯',
         license: '版權',
-        allowComments: '允許評論',
+        allowComments: '評論',
       },
     },
   }[lang];

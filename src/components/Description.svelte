@@ -1,46 +1,49 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { WEB_DOMAINS } from '../settings';
   import { draftStore } from '../stores';
-  import type { Draft } from '../PublishModal';
+  import { translations } from '../translations';
 
-  export let draft: Draft;
-  export let environment: string;
+  let { environment, draft } = $props();
 
-  $: $draftStore = draft;
-  $: settings = $draftStore?.settings;
+  const unsubscribe = draftStore.subscribe((value) => {
+    draft = value;
+  });
+
+  onDestroy(() => {
+    unsubscribe();
+  });
 </script>
 
 <div class="description">
-  {#each Object.entries(settings) as [field, index]}
+  {#each Object.entries(draft.settings) as [field, value]}
     <p>
-      <b
-        >{field
-          .replace(/([A-Z])/g, ' $1')
-          .charAt(0)
-          .toUpperCase() +
-          field
-            .replace(/([A-Z])/g, ' $1')
-            .slice(1)
-            .toLowerCase()}:</b
-      >
-      {#if field === 'collection'}
-        {#each settings['collection'] as item, i}
-          <a href={item.url} target="_blank">{item.title || item.url}</a>
-          {#if i !== settings['collection'].length - 1},{/if}
-        {/each}
-      {:else if Array.isArray(settings[field])}
-        {settings[field].length ? settings[field].join(', ') : '-'}
-      {:else}
-        {settings[field] || '-'}
-      {/if}
+      <b>
+        {translations().frontmatter[field]}:
+      </b>
+      <span>
+        {#if field === 'collection' && Array.isArray(value)}
+          {#each value as item, i}
+            <a href={item.url} target="_blank">{item.title || item.url}</a>
+            {#if i !== value.length - 1},
+            {/if}
+          {/each}
+        {:else if Array.isArray(value)}
+          {value.length ? value.join(', ') : '-'}
+        {:else if typeof value === 'boolean'}
+          {value ? translations().allowed : translations().notAllowed}
+        {:else}
+          {value || '-'}
+        {/if}
+      </span>
     </p>
   {/each}
 
-  {#if $draftStore?.id}
+  {#if draft?.id}
     <p>
-      <b>Draft:</b>
-      <a href={`${WEB_DOMAINS[environment]}/me/drafts/${$draftStore.id}`} target="_blank">
-        View on Matters Town
+      <b>{translations().draft}:</b>
+      <a href={`${WEB_DOMAINS[environment]}/me/drafts/${draft.id}`} target="_blank">
+        {translations().viewOnMatters}
       </a>
     </p>
   {/if}

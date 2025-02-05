@@ -4,19 +4,21 @@
   import { draftStore } from '../stores';
   import { translations } from '../translations';
 
-  let { environment, draft } = $props();
+  let { environment, settings } = $props();
 
   const unsubscribe = draftStore.subscribe((value) => {
-    draft = value;
+    settings = value;
   });
+
+  const { id, ...frontmatter } = settings;
 
   onDestroy(() => {
     unsubscribe();
   });
 </script>
 
-<div class="description">
-  {#each Object.entries(draft.settings) as [field, value]}
+<div>
+  {#each Object.entries(frontmatter) as [field, value]}
     <p>
       <b>
         {translations().frontmatter[field]}:
@@ -39,10 +41,10 @@
     </p>
   {/each}
 
-  {#if draft?.id}
+  {#if id}
     <p>
       <b>{translations().draft}:</b>
-      <a href={`${WEB_DOMAINS[environment]}/me/drafts/${draft.id}`} target="_blank">
+      <a href={`${WEB_DOMAINS[environment]}/me/drafts/${settings.id}`} target="_blank">
         {translations().viewOnMatters}
       </a>
     </p>

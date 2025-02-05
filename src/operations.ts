@@ -64,3 +64,14 @@ export const ME = gql`
     }
   }
 `;
+
+export const DIRECT_UPLOAD_URL = gql`
+  mutation DirectImageUpload($input: DirectImageUploadInput!) {
+    directImageUpload(input: $input) {
+      id
+      type
+      draft
+      uploadURL
+    }
+  }
+`;

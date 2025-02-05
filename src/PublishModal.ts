@@ -1,8 +1,15 @@
+import { mount } from 'svelte';
 import { ButtonComponent, MarkdownRenderer, Notice, setIcon, Setting } from 'obsidian';
 
 import Publisher from '../main';
 import { QueryModal } from './QueryModal';
-import { GET_ARTICLE, PUBLISH_ARTICLE, PUT_DRAFT, GET_PUBLISHED_ARTICLE } from './operations';
+import {
+  GET_ARTICLE,
+  PUBLISH_ARTICLE,
+  PUT_DRAFT,
+  GET_PUBLISHED_ARTICLE,
+  DIRECT_UPLOAD_URL,
+} from './operations';
 
 import type {
   PutDraftInput,
@@ -14,26 +21,23 @@ import type {
   PublishArticleMutation,
   NodeInput,
   GetPublishedArticleQuery,
+  DirectImageUploadInput,
+  DirectImageUploadMutation,
 } from './generated/graphql';
 
 import Description from './components/Description.svelte';
-import { mount } from 'svelte';
+
 import { draftStore } from './stores';
 import { WEB_DOMAINS } from './settings';
 import { translations } from './translations';
-// import ModalContent from './components/ModalContent.svelte';
 
-export interface Draft {
+export interface DraftSettings {
   id?: string;
-  title: string;
-  content: string;
-  settings: {
-    summary?: string | null;
-    tags: string[];
-    collection: { url: string; id?: string; title?: string }[];
-    license: string;
-    allowComments: boolean;
-  };
+  summary?: string | null;
+  tags: string[];
+  collection: { url: string; id?: string; title?: string }[];
+  license: string;
+  allowComments: boolean;
 }
 
 type ButtonUpdate = (state: 'upload' | 'publish' | 'loading') => void;
@@ -42,17 +46,14 @@ export class PublishModal extends QueryModal {
   updateButton: ButtonUpdate;
   // default metadata of article
   // align with Obsidian editor (instead of Matters schema)
-  draft: Draft = {
-    title: '',
-    content: '',
-    settings: {
-      summary: '',
-      tags: [],
-      collection: [],
-      license: 'CC0',
-      allowComments: true,
-    },
+  draftSettings: DraftSettings = {
+    summary: '',
+    tags: [],
+    collection: [],
+    license: 'CC0',
+    allowComments: true,
   };
+  draftEl: HTMLElement;
 
   constructor(plugin: Publisher) {
     super(plugin);
@@ -107,9 +108,7 @@ export class PublishModal extends QueryModal {
     }
 
     // get and set title
-    const title = currentFile.basename;
-    this.setTitle(title);
-    this.draft.title = title;
+    this.setTitle(currentFile.basename);
 
     // get md content without frontmatter
     const md = await this.app.vault.read(currentFile);
@@ -120,36 +119,32 @@ export class PublishModal extends QueryModal {
         : md;
 
     // render html into contentEl
+    this.draftEl = this.contentEl.createEl('article');
     await MarkdownRenderer.render(
       this.app,
       contentWithoutFrontmatter,
-      this.contentEl,
+      this.draftEl,
       currentFile.path,
       this.plugin
     );
 
-    // read in content for draft
-    this.draft.content = this.contentEl.innerHTML;
     // remove loading spinner
     loadingEl.remove();
 
     // extract properties from frontmatter
-    for (const key in this.draft.settings) {
+    for (const key in this.draftSettings) {
       const property = cache?.frontmatter?.[translations().frontmatter[key]];
 
       if (property) {
         // handle collection
         if (key === 'collection') {
-          this.draft.settings['collection'] = property.map((url: string) => ({ url }));
+          this.draftSettings['collection'] = property.map((url: string) => ({ url }));
         } else {
           // other properties
-          this.draft.settings[key] = property;
+          this.draftSettings[key] = property;
         }
       }
     }
-
-    // Create description section
-    const descriptionEl = this.contentEl.createDiv();
 
     // Create setting section, append description and button
     const settingEl = new Setting(this.contentEl);
@@ -157,14 +152,20 @@ export class PublishModal extends QueryModal {
     settingEl
       .setDesc(
         createFragment((el) => {
+          const descriptionEl = createDiv();
           el.appendChild(descriptionEl);
+
+          // Mount Svelte component
+          mount(Description, {
+            target: descriptionEl,
+            props: {
+              settings: this.draftSettings,
+              environment: this.plugin.settings.environment,
+            },
+          });
         })
       )
       .addButton((btn) => {
-        // set button width and margin
-        // btn.buttonEl.style.minWidth = `${btn.buttonEl.offsetWidth}px`;
-        // btn.buttonEl.style.marginBottom = '8px';
-
         this.updateButton = updateFactory(
           btn,
           this.uploadDraft.bind(this),
@@ -178,45 +179,56 @@ export class PublishModal extends QueryModal {
         return btn;
       });
 
-    // Mount Svelte component
-    mount(Description, {
-      target: descriptionEl,
-      props: {
-        draft: this.draft,
-        environment: this.plugin.settings.environment,
-      },
-    });
-
     // Fetch and update collection
     Promise.all(
-      this.draft.settings['collection'].map(async ({ url }, index) => {
+      this.draftSettings['collection'].map(async ({ url }, index) => {
         const article = await this.getArticleFromUrl(url);
         if (article) {
           const { id, title } = article;
           // get id & title
-          this.draft.settings['collection'][index] = { url, id, title };
+          this.draftSettings['collection'][index] = { url, id, title };
         } else {
           new Notice(translations().notices.failCollection + url);
         }
       })
     ).then(() => {
-      draftStore.set(this.draft);
+      draftStore.set(this.draftSettings);
     });
   }
 
-  private async uploadDraft() {
+  async handleImages() {
+    this.draftEl.querySelectorAll('img').forEach(async (img) => {
+      const src = img.getAttribute('src');
+      if (src) {
+        const {
+          directImageUpload: { id, type, draft, uploadURL },
+        } = await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
+          DIRECT_UPLOAD_URL,
+          {
+            type: 'embed',
+            entityType: 'draft',
+            entityId: this.draftSettings.id,
+            mime: 'image/jpeg',
+          }
+        );
+      }
+    });
+  }
+
+  async uploadDraft() {
     // show spinner
     this.updateButton('loading');
 
     try {
       // deconstruct draft, get license, allowComments, and collection
-      const { title: localTitle, content: localContent } = this.draft;
+      const content = this.draftEl.innerHTML;
+      const title = this.titleEl.textContent;
       const {
         license: licenseString,
         allowComments,
         collection: localCollection,
         ...restSettings
-      } = this.draft.settings;
+      } = this.draftSettings;
 
       // translate license to Matters API, using CC0 as default
       const licenseKey = licenseString.replace(/\s+/g, '').toLowerCase();
@@ -225,35 +237,45 @@ export class PublishModal extends QueryModal {
       // upload draft
       const data = await this.sendQuery<PutDraftMutation, PutDraftInput>(PUT_DRAFT, {
         ...restSettings,
-        title: localTitle,
-        content: localContent,
+        title,
+        content,
         collection: localCollection.map(({ id }) => id),
         license,
         canComment: allowComments,
       });
 
+      // await this.handleImages();
+
       new Notice(translations().notices.uploadedDraft);
 
       // get server version of draft
-      const { id, content, title, collection, ...restDraft } = data.putDraft;
-      this.draft = {
-        ...this.draft,
-        id,
-        content,
-        title,
-        settings: { ...this.draft.settings, ...restDraft },
+      const {
+        content: remoteContent,
+        title: remoteTitle,
+        collection,
+        ...restDraft
+      } = data.putDraft;
+
+      this.draftSettings = {
+        ...this.draftSettings,
+        ...restDraft,
       };
+
       // update collection
-      this.draft.settings['collection'] = collection.edges.map(({ node: { id, title } }) => ({
-        url: this.draft.settings['collection'].filter(
+      this.draftSettings['collection'] = collection.edges.map(({ node: { id, title } }) => ({
+        url: this.draftSettings['collection'].filter(
           ({ id: collectionId }) => collectionId === id
         )[0].url,
         id,
         title,
       }));
 
+      // update modal
+      this.titleEl.textContent = remoteTitle;
+      this.draftEl.innerHTML = remoteContent;
+
       //update draft store
-      draftStore.set(this.draft);
+      draftStore.set(this.draftSettings);
 
       // ready for publish
       this.updateButton('publish');
@@ -272,7 +294,7 @@ export class PublishModal extends QueryModal {
       this.updateButton('loading');
       // trigger publish
       await this.sendQuery<PublishArticleMutation, PublishArticleInput>(PUBLISH_ARTICLE, {
-        id: this.draft.id,
+        id: this.draftSettings.id,
       });
 
       // poll for published article status every 2 seconds
@@ -284,7 +306,7 @@ export class PublishModal extends QueryModal {
         publishedDraft = await this.sendQuery<GetPublishedArticleQuery, NodeInput>(
           GET_PUBLISHED_ARTICLE,
           {
-            id: this.draft.id,
+            id: this.draftSettings.id,
           },
           true
         );
@@ -340,15 +362,15 @@ const updateFactory = (
         createSpan({ text: translations().publish, attr: { style: `margin-left: 8px` } })
       );
       button.buttonEl.style.minWidth = `72px`;
+
+      // Keep modal scrolled to the bottom after updating button content.
+      // Use requestAnimationFrame to ensure the DOM has updated.
+      requestAnimationFrame(() => {
+        modalContentEl.scrollTop = modalContentEl.scrollHeight;
+      });
     } else if (state === 'loading') {
       // loading
       button.setDisabled(true).setButtonText('').setIcon('loader-2').buttonEl.addClass('loading');
       button.buttonEl.style.minWidth = `72px`;
     }
-
-    // Keep modal scrolled to the bottom after updating button content.
-    // Use requestAnimationFrame to ensure the DOM has updated.
-    requestAnimationFrame(() => {
-      modalContentEl.scrollTop = modalContentEl.scrollHeight;
-    });
   }) as ButtonUpdate;

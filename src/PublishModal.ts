@@ -1,5 +1,15 @@
 import { mount } from 'svelte';
-import { ButtonComponent, MarkdownRenderer, Notice, setIcon, Setting } from 'obsidian';
+import {
+  ButtonComponent,
+  FileSystemAdapter,
+  MarkdownRenderer,
+  Notice,
+  normalizePath,
+  requestUrl,
+  setIcon,
+  Setting,
+} from 'obsidian';
+import type { SvelteComponent } from 'svelte';
 
 import Publisher from '../main';
 import { QueryModal } from './QueryModal';
@@ -9,6 +19,8 @@ import {
   PUT_DRAFT,
   GET_PUBLISHED_ARTICLE,
   DIRECT_UPLOAD_URL,
+  DIRECT_UPLOAD_DONE,
+  DIRECT_IMAGE_UPLOAD_URL,
 } from './operations';
 
 import type {
@@ -26,6 +38,7 @@ import type {
 } from './generated/graphql';
 
 import Description from './components/Description.svelte';
+import ImageUploadOverlay from './components/ImageUploadOverlay.svelte';
 
 import { draftStore } from './stores';
 import { WEB_DOMAINS } from './settings';
@@ -54,6 +67,8 @@ export class PublishModal extends QueryModal {
     allowComments: true,
   };
   draftEl: HTMLElement;
+  private successCount = 0;
+  private failedCount = 0;
 
   constructor(plugin: Publisher) {
     super(plugin);
@@ -197,22 +212,31 @@ export class PublishModal extends QueryModal {
   }
 
   async handleImages() {
-    this.draftEl.querySelectorAll('img').forEach(async (img) => {
-      const src = img.getAttribute('src');
-      if (src) {
-        const {
-          directImageUpload: { id, type, draft, uploadURL },
-        } = await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
-          DIRECT_UPLOAD_URL,
-          {
-            type: 'embed',
-            entityType: 'draft',
-            entityId: this.draftSettings.id,
-            mime: 'image/jpeg',
-          }
-        );
-      }
-    });
+    // Reset counters
+    this.successCount = 0;
+    this.failedCount = 0;
+
+    const images = this.draftEl.querySelectorAll('img');
+
+    // Filter for local images and prepare upload tasks
+    const uploadTasks = Array.from(images)
+      .filter((img) => {
+        const src = img.getAttribute('src');
+        console.log({ src });
+        return src && !src.startsWith('data:') && !src.startsWith('http');
+      })
+      .map((img) => this.uploadImage(img));
+
+    // Process uploads concurrently
+    await Promise.allSettled(uploadTasks);
+
+    // Show final notification
+    if (this.successCount > 0 || this.failedCount > 0) {
+      new Notice(
+        `${this.successCount} images uploaded successfully` +
+          (this.failedCount > 0 ? `, ${this.failedCount} failed` : '')
+      );
+    }
   }
 
   async uploadDraft() {
@@ -244,7 +268,8 @@ export class PublishModal extends QueryModal {
         canComment: allowComments,
       });
 
-      // await this.handleImages();
+      this.draftSettings.id = data.putDraft.id;
+      await this.handleImages();
 
       new Notice(translations().notices.uploadedDraft);
 
@@ -327,6 +352,89 @@ export class PublishModal extends QueryModal {
       new Notice(translations().notices.failPublishDraft);
     }
   }
+
+  async uploadImage(imgElement: HTMLImageElement) {
+    // Create container for the image and overlay
+    const container = document.createElement('div');
+    container.style.position = 'relative';
+    imgElement.replaceWith(container);
+    container.appendChild(imgElement);
+
+    const overlay = mount(ImageUploadOverlay, {
+      target: container,
+      props: {
+        onRetry: () => this.uploadImage(imgElement),
+        state: 'loading',
+      },
+    });
+
+    try {
+      const src = imgElement.getAttribute('src');
+      if (!src) throw new Error('No src attribute found');
+
+      // Upload to Matters server
+      const path = await this.directUpload({
+        src,
+        type: 'embed',
+        entityType: 'draft',
+        entityId: this.draftSettings.id,
+      });
+
+      // Update image src with new URL
+      imgElement.src = path;
+
+      // Clean up overlay
+      container.replaceWith(imgElement);
+      this.successCount++;
+    } catch (error) {
+      overlay.state = 'error';
+      this.failedCount++;
+      console.error('Image upload failed:', error);
+    }
+  }
+
+  async directUpload({ src, type, entityType, entityId }) {
+    const systemPath = decodeURIComponent(
+      src
+        .replace(/^app:\/\/[^/]+/, '') // Remove app:// and hash, keep leading /
+        .split('?')[0] // Remove query parameters
+    );
+    const vaultPath = this.app.vault.adapter.getBasePath();
+    const relativePath = systemPath.replace(vaultPath + '/', '');
+    const file = await this.app.vault.adapter.readBinary(relativePath);
+    const fileName = relativePath.split('/').pop();
+
+    // Determine MIME type from file extension
+    const mimeType = getMimeType(fileName);
+
+    // Create File object
+    const imageFile = new File([file], fileName, { type: mimeType });
+
+    // Get upload URL
+    const uploadUrlResponse = await this.sendQuery<
+      DirectImageUploadMutation,
+      DirectImageUploadInput
+    >(DIRECT_IMAGE_UPLOAD_URL, {
+      type,
+      entityType,
+      entityId,
+      mime: mimeType,
+    });
+
+    const { uploadURL: url, path } = uploadUrlResponse.directImageUpload;
+
+    // Upload file
+    await requestUrl({
+      url,
+      method: 'PUT',
+      body: imageFile,
+      headers: {
+        'Content-Type': mimeType,
+      },
+    });
+
+    return path;
+  }
 }
 
 const updateFactory = (
@@ -374,3 +482,17 @@ const updateFactory = (
       button.buttonEl.style.minWidth = `72px`;
     }
   }) as ButtonUpdate;
+
+// Helper to determine MIME type from filename
+function getMimeType(fileName: string): string {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+  const mimeTypes = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml',
+  };
+  return mimeTypes[ext] || 'image/jpeg';
+}

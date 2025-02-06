@@ -1502,9 +1502,9 @@ export type MeQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type MeQuery = { __typename?: 'Query', viewer?: { __typename?: 'User', id: string, userName?: string | null } | null };
 
-export type DirectImageUploadMutationVariables = Exact<{
+export type DirectImageUploadInputMutationVariables = Exact<{
   input: DirectImageUploadInput;
 }>;
 
 
-export type DirectImageUploadMutation = { __typename?: 'Mutation', directImageUpload: { __typename?: 'Asset', id: string, type: AssetType, draft?: boolean | null, uploadURL?: string | null } };
+export type DirectImageUploadInputMutation = { __typename?: 'Mutation', directImageUpload: { __typename?: 'Asset', id: string, uploadURL?: string | null, path: string } };

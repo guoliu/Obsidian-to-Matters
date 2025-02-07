@@ -406,7 +406,7 @@ export class PublishModal extends QueryModal {
       const imageFile = new File([file], fileName, { type: mimeType });
 
       // Upload to Matters server
-      const path = await this.directUpload({
+      const { path, id } = await this.directUpload({
         file: imageFile,
         type: 'embed',
         entityType: 'draft',
@@ -415,6 +415,7 @@ export class PublishModal extends QueryModal {
 
       // Update image src with new URL
       imgElement.src = path;
+      imgElement.setAttribute('data-asset-id', id);
 
       // Clean up overlay
       container.replaceWith(imgElement); // Remove container and overlay
@@ -432,7 +433,7 @@ export class PublishModal extends QueryModal {
   async directUpload({ file, type, entityType, entityId }) {
     // First, get upload URL
     const {
-      directImageUpload: { uploadURL: url, path },
+      directImageUpload: { uploadURL: url, path, id },
     } = await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
       DIRECT_IMAGE_UPLOAD_URL,
       {
@@ -467,7 +468,7 @@ export class PublishModal extends QueryModal {
       }
     );
 
-    return path;
+    return { path, id };
   }
 }
 

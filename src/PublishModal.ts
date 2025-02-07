@@ -413,12 +413,15 @@ export class PublishModal extends QueryModal {
         entityId: this.draftSettings.id,
       });
 
-      // Update image src with new URL
+      // Update image src with new URL and wrap in figure
+      const figure = document.createElement('figure');
+      figure.classList.add('image');
       imgElement.src = path;
       imgElement.setAttribute('data-asset-id', id);
+      figure.appendChild(imgElement);
 
       // Clean up overlay
-      container.replaceWith(imgElement); // Remove container and overlay
+      container.replaceWith(figure); // Remove container and overlay
       this.successCount++;
       console.log(this.draftEl.innerHTML);
     } catch (error) {

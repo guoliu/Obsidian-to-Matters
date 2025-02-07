@@ -367,11 +367,14 @@ export class PublishModal extends QueryModal {
   }
 
   async uploadImage(imgElement: HTMLImageElement) {
-    // Create container for the image and overlay
+    // Find the nearest wrapping <p> (if any)
+    const parentP = imgElement.closest('p');
+
+    // Create a container for the image and overlay
     const container = document.createElement('div');
     container.style.position = 'relative';
+    // Replace the imgElement with the container in the DOM so we can later swap it out
     imgElement.replaceWith(container);
-    // container.appendChild(imgElement);
 
     const overlay = mount(ImageUploadOverlay, {
       target: container,
@@ -385,27 +388,23 @@ export class PublishModal extends QueryModal {
       const src = imgElement.getAttribute('src');
       if (!src) throw new Error('No src attribute found');
 
-      // Extract the actual system path from app:// URL
+      // Extract the actual system path from an app:// URL.
       // Remove 'app://<hash>/' prefix and everything after '?'
-      const systemPath = decodeURIComponent(
-        src
-          .replace(/^app:\/\/[^/]+/, '') // Remove app:// and hash, keep leading /
-          .split('?')[0] // Remove query parameters
-      );
-      // extract relative path
+      const systemPath = decodeURIComponent(src.replace(/^app:\/\/[^/]+/, '').split('?')[0]);
+      // Extract relative path
       const vaultPath = this.app.vault.adapter.getBasePath();
       const relativePath = systemPath.replace(vaultPath + '/', '');
-      // read in file
+      // Read in file
       const file = await this.app.vault.adapter.readBinary(relativePath);
 
-      // Determine MIME type from file extension
+      // Determine MIME type from the file extension
       const fileName = relativePath.split('/').pop();
       const mimeType = getMimeType(fileName);
 
       // Create File object
       const imageFile = new File([file], fileName, { type: mimeType });
 
-      // Upload to Matters server
+      // Upload image to Matters server
       const { path, id } = await this.directUpload({
         file: imageFile,
         type: 'embed',
@@ -413,23 +412,36 @@ export class PublishModal extends QueryModal {
         entityId: this.draftSettings.id,
       });
 
-      // Update image src with new URL and wrap in figure
+      // Create a <figure> element with the proper class
       const figure = document.createElement('figure');
       figure.classList.add('image');
+
+      // Update the img element with the new URL, set the data attribute,
+      // and add inline styling to constrain its width.
       imgElement.src = path;
       imgElement.setAttribute('data-asset-id', id);
+      imgElement.style.maxWidth = '100%';
+      imgElement.style.height = 'auto';
+
+      // Append img to the new figure element
       figure.appendChild(imgElement);
 
+      // Create an empty <figcaption> to match the expected structure
       const caption = document.createElement('figcaption');
       figure.appendChild(caption);
 
-      // Clean up overlay
-      container.replaceWith(figure); // Remove container and overlay
+      // If an empty <p> is around our container, replace it with our figure. Otherwise, replace our container.
+      if (parentP && parentP.textContent.trim() === '') {
+        parentP.replaceWith(figure);
+      } else {
+        container.replaceWith(figure);
+      }
+
       this.successCount++;
       console.log(this.draftEl.innerHTML);
     } catch (error) {
-      // Show retry state
-      overlay.state = 'error'; // Direct state update instead of $set
+      // Show retry state on error
+      overlay.state = 'error';
       this.failedCount++;
       console.error('Image upload failed:', error);
     }

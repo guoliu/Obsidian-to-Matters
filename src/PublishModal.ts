@@ -371,7 +371,7 @@ export class PublishModal extends QueryModal {
     const container = document.createElement('div');
     container.style.position = 'relative';
     imgElement.replaceWith(container);
-    container.appendChild(imgElement);
+    // container.appendChild(imgElement);
 
     const overlay = mount(ImageUploadOverlay, {
       target: container,
@@ -419,6 +419,9 @@ export class PublishModal extends QueryModal {
       imgElement.src = path;
       imgElement.setAttribute('data-asset-id', id);
       figure.appendChild(imgElement);
+
+      const caption = document.createElement('figcaption');
+      figure.appendChild(caption);
 
       // Clean up overlay
       container.replaceWith(figure); // Remove container and overlay

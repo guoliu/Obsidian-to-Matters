@@ -222,13 +222,14 @@ export class PublishModal extends QueryModal {
     const uploadTasks = Array.from(images)
       .filter((img) => {
         const src = img.getAttribute('src');
-        console.log({ src });
         return src && !src.startsWith('data:') && !src.startsWith('http');
       })
       .map((img) => this.uploadImage(img));
 
     // Process uploads concurrently
     await Promise.allSettled(uploadTasks);
+
+    console.log({ contentElInHandleImages: this.draftEl.innerHTML });
 
     // Show final notification
     if (this.successCount > 0 || this.failedCount > 0) {
@@ -258,44 +259,56 @@ export class PublishModal extends QueryModal {
       const licenseKey = licenseString.replace(/\s+/g, '').toLowerCase();
       const license = this.licenseMap[licenseKey] || 'cc_0';
 
-      // upload draft
-      const data = await this.sendQuery<PutDraftMutation, PutDraftInput>(PUT_DRAFT, {
+      // create draft (without images)
+      const draftInput = {
         ...restSettings,
         title,
         content,
         collection: localCollection.map(({ id }) => id),
         license,
         canComment: allowComments,
+      };
+      const {
+        putDraft: { id: draftId },
+      } = await this.sendQuery<PutDraftMutation, PutDraftInput>(PUT_DRAFT, draftInput);
+
+      this.draftSettings.id = draftId;
+
+      // upload images
+      await this.handleImages();
+      console.log({ localContent: this.draftEl.innerHTML });
+
+      // update draft with images
+      const {
+        putDraft: { content: remoteContent, title: remoteTitle, collection, ...restDraft },
+      } = await this.sendQuery<PutDraftMutation, PutDraftInput>(PUT_DRAFT, {
+        ...draftInput,
+        id: this.draftSettings.id,
+        content: this.draftEl.innerHTML,
       });
 
-      this.draftSettings.id = data.putDraft.id;
-      await this.handleImages();
+      console.log({ remoteContent });
 
       new Notice(translations().notices.uploadedDraft);
 
-      // get server version of draft
-      const {
-        content: remoteContent,
-        title: remoteTitle,
-        collection,
-        ...restDraft
-      } = data.putDraft;
+      // update collection
+      if (collection && collection.edges.length > 0) {
+        this.draftSettings['collection'] = collection.edges.map(({ node: { id, title } }) => ({
+          url: this.draftSettings['collection'].filter(
+            ({ id: collectionId }) => collectionId === id
+          )[0].url,
+          id,
+          title,
+        }));
+      }
 
+      // update rest of draft settings
       this.draftSettings = {
         ...this.draftSettings,
         ...restDraft,
       };
 
-      // update collection
-      this.draftSettings['collection'] = collection.edges.map(({ node: { id, title } }) => ({
-        url: this.draftSettings['collection'].filter(
-          ({ id: collectionId }) => collectionId === id
-        )[0].url,
-        id,
-        title,
-      }));
-
-      // update modal
+      // update modal content
       this.titleEl.textContent = remoteTitle;
       this.draftEl.innerHTML = remoteContent;
 
@@ -372,9 +385,29 @@ export class PublishModal extends QueryModal {
       const src = imgElement.getAttribute('src');
       if (!src) throw new Error('No src attribute found');
 
+      // Extract the actual system path from app:// URL
+      // Remove 'app://<hash>/' prefix and everything after '?'
+      const systemPath = decodeURIComponent(
+        src
+          .replace(/^app:\/\/[^/]+/, '') // Remove app:// and hash, keep leading /
+          .split('?')[0] // Remove query parameters
+      );
+      // extract relative path
+      const vaultPath = this.app.vault.adapter.getBasePath();
+      const relativePath = systemPath.replace(vaultPath + '/', '');
+      // read in file
+      const file = await this.app.vault.adapter.readBinary(relativePath);
+
+      // Determine MIME type from file extension
+      const fileName = relativePath.split('/').pop();
+      const mimeType = getMimeType(fileName);
+
+      // Create File object
+      const imageFile = new File([file], fileName, { type: mimeType });
+
       // Upload to Matters server
       const path = await this.directUpload({
-        src,
+        file: imageFile,
         type: 'embed',
         entityType: 'draft',
         entityId: this.draftSettings.id,
@@ -384,54 +417,55 @@ export class PublishModal extends QueryModal {
       imgElement.src = path;
 
       // Clean up overlay
-      container.replaceWith(imgElement);
+      container.replaceWith(imgElement); // Remove container and overlay
       this.successCount++;
+      console.log(this.draftEl.innerHTML);
     } catch (error) {
-      overlay.state = 'error';
+      // Show retry state
+      overlay.state = 'error'; // Direct state update instead of $set
       this.failedCount++;
       console.error('Image upload failed:', error);
     }
   }
 
-  async directUpload({ src, type, entityType, entityId }) {
-    const systemPath = decodeURIComponent(
-      src
-        .replace(/^app:\/\/[^/]+/, '') // Remove app:// and hash, keep leading /
-        .split('?')[0] // Remove query parameters
+  // Direct upload implementation
+  async directUpload({ file, type, entityType, entityId }) {
+    // First, get upload URL
+    const {
+      directImageUpload: { uploadURL: url, path },
+    } = await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
+      DIRECT_IMAGE_UPLOAD_URL,
+      {
+        type,
+        entityType,
+        entityId,
+        mime: file.type,
+      }
     );
-    const vaultPath = this.app.vault.adapter.getBasePath();
-    const relativePath = systemPath.replace(vaultPath + '/', '');
-    const file = await this.app.vault.adapter.readBinary(relativePath);
-    const fileName = relativePath.split('/').pop();
 
-    // Determine MIME type from file extension
-    const mimeType = getMimeType(fileName);
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(url, { method: 'POST', body: formData });
+    if (!res.ok || !res.headers.get('content-type')?.startsWith('application/json')) {
+      throw new Error('directUpload error: non json response');
+    }
+    const resData = await res.json();
+    if (resData?.success !== true) {
+      // errors: Uploaded image must have image/jpeg, image/png, image/webp, image/gif or image/svg+xml content-type
+      throw new Error(`directUpload error: ${resData?.errors?.[0]?.message || 'no success'}`);
+    }
 
-    // Create File object
-    const imageFile = new File([file], fileName, { type: mimeType });
-
-    // Get upload URL
-    const uploadUrlResponse = await this.sendQuery<
-      DirectImageUploadMutation,
-      DirectImageUploadInput
-    >(DIRECT_IMAGE_UPLOAD_URL, {
-      type,
-      entityType,
-      entityId,
-      mime: mimeType,
-    });
-
-    const { uploadURL: url, path } = uploadUrlResponse.directImageUpload;
-
-    // Upload file
-    await requestUrl({
-      url,
-      method: 'PUT',
-      body: imageFile,
-      headers: {
-        'Content-Type': mimeType,
-      },
-    });
+    // mark image as uploaded
+    await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
+      DIRECT_IMAGE_UPLOAD_URL,
+      {
+        type,
+        entityType,
+        entityId,
+        draft: false,
+        url: path,
+      }
+    );
 
     return path;
   }

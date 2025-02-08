@@ -415,13 +415,13 @@ export class PublishModal extends QueryModal {
       // Create a <figure> element with the proper class
       const figure = document.createElement('figure');
       figure.classList.add('image');
+      figure.style.cssText = 'max-width: 100%; margin: 0;';
 
       // Update the img element with the new URL, set the data attribute,
       // and add inline styling to constrain its width.
       imgElement.src = path;
       imgElement.setAttribute('data-asset-id', id);
-      imgElement.style.maxWidth = '100%';
-      imgElement.style.height = 'auto';
+      imgElement.style.cssText = 'max-width: 100%; margin: 0; height: auto;';
 
       // Append img to the new figure element
       figure.appendChild(imgElement);
@@ -438,7 +438,6 @@ export class PublishModal extends QueryModal {
       }
 
       this.successCount++;
-      console.log(this.draftEl.innerHTML);
     } catch (error) {
       // Show retry state on error
       overlay.state = 'error';

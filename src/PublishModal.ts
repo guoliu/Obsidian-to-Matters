@@ -10,6 +10,7 @@ import {
   Setting,
 } from 'obsidian';
 import type { SvelteComponent } from 'svelte';
+import type { DraftSettings, ArticleLicenseType } from './types/article';
 
 import Publisher from '../main';
 import { QueryModal } from './QueryModal';
@@ -25,7 +26,6 @@ import {
 
 import type {
   PutDraftInput,
-  ArticleLicenseType,
   PutDraftMutation,
   PublishArticleInput,
   GetArticleQuery,
@@ -43,15 +43,6 @@ import ImageUploadOverlay from './components/ImageUploadOverlay.svelte';
 import { draftStore } from './stores';
 import { WEB_DOMAINS } from './settings';
 import { translations } from './translations';
-
-export interface DraftSettings {
-  id?: string;
-  summary?: string | null;
-  tags: string[];
-  collection: { url: string; id?: string; title?: string }[];
-  license: string;
-  allowComments: boolean;
-}
 
 type ButtonUpdate = (state: 'upload' | 'publish' | 'loading') => void;
 

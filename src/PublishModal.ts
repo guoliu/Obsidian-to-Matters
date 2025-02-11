@@ -1,15 +1,11 @@
-import { mount } from 'svelte';
 import {
   ButtonComponent,
   FileSystemAdapter,
   MarkdownRenderer,
   Notice,
-  normalizePath,
-  requestUrl,
   setIcon,
   Setting,
 } from 'obsidian';
-import type { SvelteComponent } from 'svelte';
 import type { DraftSettings, ArticleLicenseType } from './types/article';
 
 import Publisher from '../main';
@@ -19,9 +15,7 @@ import {
   PUBLISH_ARTICLE,
   PUT_DRAFT,
   GET_PUBLISHED_ARTICLE,
-  DIRECT_UPLOAD_URL,
-  DIRECT_UPLOAD_DONE,
-  DIRECT_IMAGE_UPLOAD_URL,
+  DIRECT_IMAGE_UPLOAD,
 } from './operations';
 
 import type {
@@ -37,10 +31,8 @@ import type {
   DirectImageUploadMutation,
 } from './generated/graphql';
 
-import Description from './components/Description.svelte';
-import ImageUploadOverlay from './components/ImageUploadOverlay.svelte';
-
-import { draftStore } from './stores';
+import { Description } from './components/Description';
+import { ImageUploadOverlay } from './components/ImageUploadOverlay';
 import { WEB_DOMAINS } from './settings';
 import { translations } from './translations';
 
@@ -60,6 +52,7 @@ export class PublishModal extends QueryModal {
   draftEl: HTMLElement;
   private successCount = 0;
   private failedCount = 0;
+  description: Description;
 
   constructor(plugin: Publisher) {
     super(plugin);
@@ -161,14 +154,11 @@ export class PublishModal extends QueryModal {
           const descriptionEl = createDiv();
           el.appendChild(descriptionEl);
 
-          // Mount Svelte component
-          mount(Description, {
-            target: descriptionEl,
-            props: {
-              settings: this.draftSettings,
-              environment: this.plugin.settings.environment,
-            },
-          });
+          this.description = new Description(
+            descriptionEl,
+            this.draftSettings,
+            this.plugin.settings.environment
+          );
         })
       )
       .addButton((btn) => {
@@ -198,7 +188,7 @@ export class PublishModal extends QueryModal {
         }
       })
     ).then(() => {
-      draftStore.set(this.draftSettings);
+      this.description.update(this.draftSettings);
     });
   }
 
@@ -219,8 +209,6 @@ export class PublishModal extends QueryModal {
 
     // Process uploads concurrently
     await Promise.allSettled(uploadTasks);
-
-    console.log({ contentElInHandleImages: this.draftEl.innerHTML });
 
     // Show final notification
     if (this.successCount > 0 || this.failedCount > 0) {
@@ -267,7 +255,6 @@ export class PublishModal extends QueryModal {
 
       // upload images
       await this.handleImages();
-      console.log({ localContent: this.draftEl.innerHTML });
 
       // update draft with images
       const {
@@ -277,8 +264,6 @@ export class PublishModal extends QueryModal {
         id: this.draftSettings.id,
         content: this.draftEl.innerHTML,
       });
-
-      console.log({ remoteContent });
 
       new Notice(translations().notices.uploadedDraft);
 
@@ -301,10 +286,28 @@ export class PublishModal extends QueryModal {
 
       // update modal content
       this.titleEl.textContent = remoteTitle;
-      this.draftEl.innerHTML = remoteContent;
 
-      //update draft store
-      draftStore.set(this.draftSettings);
+      // Store dimensions and scroll position before update
+      const { width, height } = this.draftEl.getBoundingClientRect();
+      const scrollPos = this.draftEl.scrollTop;
+
+      // Temporarily fix dimensions
+      this.draftEl.style.width = `${width}px`;
+      this.draftEl.style.height = `${height}px`;
+
+      // Update content
+      this.draftEl.innerHTML = remoteContent;
+      //update description
+      this.description.update(this.draftSettings);
+
+      // Restore scroll position
+      this.draftEl.scrollTop = scrollPos;
+
+      // Remove fixed dimensions after a brief delay to allow content to settle
+      requestAnimationFrame(() => {
+        this.draftEl.style.width = '';
+        this.draftEl.style.height = '';
+      });
 
       // ready for publish
       this.updateButton('publish');
@@ -358,22 +361,26 @@ export class PublishModal extends QueryModal {
   }
 
   async uploadImage(imgElement: HTMLImageElement) {
-    // Find the nearest wrapping <p> (if any)
-    const parentP = imgElement.closest('p');
+    // Find existing figure or create new one
+    let figure = imgElement.closest('figure');
+    if (!figure) {
+      figure = document.createElement('figure');
+      figure.classList.add('image');
+      figure.style.position = 'relative';
 
-    // Create a container for the image and overlay
-    const container = document.createElement('div');
-    container.style.position = 'relative';
-    // Replace the imgElement with the container in the DOM so we can later swap it out
-    imgElement.replaceWith(container);
+      // Preserve dimensions before swap
+      const width = imgElement.width;
+      const height = imgElement.height;
+      figure.style.width = width + 'px';
+      figure.style.height = height + 'px';
 
-    const overlay = mount(ImageUploadOverlay, {
-      target: container,
-      props: {
-        onRetry: () => this.uploadImage(imgElement),
-        state: 'loading',
-      },
-    });
+      // Replace image with figure and move image inside
+      imgElement.replaceWith(figure);
+      figure.appendChild(imgElement);
+    }
+
+    const overlay = new ImageUploadOverlay(figure, () => this.uploadImage(imgElement));
+    overlay.setState('loading');
 
     try {
       const src = imgElement.getAttribute('src');
@@ -382,8 +389,11 @@ export class PublishModal extends QueryModal {
       // Extract the actual system path from an app:// URL.
       // Remove 'app://<hash>/' prefix and everything after '?'
       const systemPath = decodeURIComponent(src.replace(/^app:\/\/[^/]+/, '').split('?')[0]);
+
       // Extract relative path
-      const vaultPath = this.app.vault.adapter.getBasePath();
+      const adapter = this.app.vault.adapter;
+      // TODO: test on mobile
+      const vaultPath = adapter instanceof FileSystemAdapter ? adapter.getBasePath() : null;
       const relativePath = systemPath.replace(vaultPath + '/', '');
       // Read in file
       const file = await this.app.vault.adapter.readBinary(relativePath);
@@ -403,35 +413,24 @@ export class PublishModal extends QueryModal {
         entityId: this.draftSettings.id,
       });
 
-      // Create a <figure> element with the proper class
-      const figure = document.createElement('figure');
-      figure.classList.add('image');
-      figure.style.cssText = 'max-width: 100%; margin: 0;';
-
-      // Update the img element with the new URL, set the data attribute,
-      // and add inline styling to constrain its width.
+      // Update the img element with the new URL and data attribute
       imgElement.src = path;
       imgElement.setAttribute('data-asset-id', id);
-      imgElement.style.cssText = 'max-width: 100%; margin: 0; height: auto;';
 
-      // Append img to the new figure element
-      figure.appendChild(imgElement);
-
-      // Create an empty <figcaption> to match the expected structure
+      // Create an empty <figcaption>
       const caption = document.createElement('figcaption');
       figure.appendChild(caption);
 
-      // If an empty <p> is around our container, replace it with our figure. Otherwise, replace our container.
-      if (parentP && parentP.textContent.trim() === '') {
-        parentP.replaceWith(figure);
-      } else {
-        container.replaceWith(figure);
-      }
+      // Once new image is loaded, remove the fixed dimensions
+      imgElement.onload = () => {
+        figure.style.width = '';
+        figure.style.height = '';
+      };
 
       this.successCount++;
+      overlay.destroy(); // Remove overlay on success
     } catch (error) {
-      // Show retry state on error
-      overlay.state = 'error';
+      overlay.setState('error');
       this.failedCount++;
       console.error('Image upload failed:', error);
     }
@@ -443,7 +442,7 @@ export class PublishModal extends QueryModal {
     const {
       directImageUpload: { uploadURL: url, path, id },
     } = await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
-      DIRECT_IMAGE_UPLOAD_URL,
+      DIRECT_IMAGE_UPLOAD,
       {
         type,
         entityType,
@@ -465,16 +464,13 @@ export class PublishModal extends QueryModal {
     }
 
     // mark image as uploaded
-    await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(
-      DIRECT_IMAGE_UPLOAD_URL,
-      {
-        type,
-        entityType,
-        entityId,
-        draft: false,
-        url: path,
-      }
-    );
+    await this.sendQuery<DirectImageUploadMutation, DirectImageUploadInput>(DIRECT_IMAGE_UPLOAD, {
+      type,
+      entityType,
+      entityId,
+      draft: false,
+      url: path,
+    });
 
     return { path, id };
   }
@@ -514,11 +510,15 @@ const updateFactory = (
       );
       button.buttonEl.style.minWidth = `72px`;
 
-      // Keep modal scrolled to the bottom after updating button content.
-      // Use requestAnimationFrame to ensure the DOM has updated.
-      requestAnimationFrame(() => {
-        modalContentEl.scrollTop = modalContentEl.scrollHeight;
-      });
+      // scroll to bottom if we're already near the bottom
+      // to avoid content jump
+      // const isNearBottom =
+      //   modalContentEl.scrollHeight - modalContentEl.scrollTop - modalContentEl.clientHeight < 30;
+      // if (isNearBottom) {
+      //   requestAnimationFrame(() => {
+      //     modalContentEl.scrollTop = modalContentEl.scrollHeight;
+      //   });
+      // }
     } else if (state === 'loading') {
       // loading
       button.setDisabled(true).setButtonText('').setIcon('loader-2').buttonEl.addClass('loading');

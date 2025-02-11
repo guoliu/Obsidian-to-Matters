@@ -33,7 +33,7 @@ export default class Publisher extends Plugin {
         await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
           for (const property in translations().frontmatter) {
             if (!(translations().frontmatter[property] in frontmatter)) {
-              frontmatter[translations().frontmatter[property]] = modal.draft.settings[property];
+              frontmatter[translations().frontmatter[property]] = modal.draftSettings[property];
               modified = true;
             }
           }

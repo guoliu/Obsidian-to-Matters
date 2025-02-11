@@ -41,18 +41,6 @@ export class QueryModal extends Modal {
         }
 
         // send query to GQL server
-        console.log({
-          url: SERVER_ENDPOINTS[environment],
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-access-token': accessToken,
-          },
-          body: JSON.stringify({
-            query: querString,
-            variables: { input },
-          }),
-        });
         const response = await requestUrl({
           url: SERVER_ENDPOINTS[environment],
           method: 'POST',

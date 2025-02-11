@@ -16,3 +16,37 @@
   justify-content: center;
   align-items: center;
 }
+
+article figure {
+  margin: 0;
+  max-width: 100%;
+}
+
+article figure img {
+  margin: 0;
+  max-width: 100%;
+  display: block;
+}
+
+article img {
+  max-width: 100%;
+  margin: 0;
+  display: block;
+}
+
+.image-upload-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-upload-overlay.error {
+  cursor: pointer;
+  background: rgba(255, 0, 0, 0.3);
+}

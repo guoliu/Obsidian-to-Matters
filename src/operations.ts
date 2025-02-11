@@ -65,8 +65,8 @@ export const ME = gql`
   }
 `;
 
-export const DIRECT_IMAGE_UPLOAD_URL = gql`
-  mutation DirectImageUploadInput($input: DirectImageUploadInput!) {
+export const DIRECT_IMAGE_UPLOAD = gql`
+  mutation DirectImageUpload($input: DirectImageUploadInput!) {
     directImageUpload(input: $input) {
       id
       uploadURL

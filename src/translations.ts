@@ -44,7 +44,7 @@ export const translations = () => {
       publishToMatters: '发布到 Matters',
       publish: '发布',
       upload: '上传',
-      viewOnMatters: '在 Matters 上查看',
+      viewOnMatters: '在 Matters 上查看草稿',
       draft: '草稿',
 
       settings: {
@@ -78,7 +78,7 @@ export const translations = () => {
       publishToMatters: '發布到 Matters',
       publish: '發布',
       upload: '上傳',
-      viewOnMatters: '在 Matters 上查看',
+      viewOnMatters: '在 Matters 上查看草稿',
       draft: '草稿',
       settings: {
         mattersSettings: 'Matters 設置',
